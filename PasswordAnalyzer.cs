@@ -1,21 +1,18 @@
+// Analyzes a password you put into it and gives it a score out of 100
+// Also tells you what improvements you can make to make your password better
 using System;
 using System.Collections.Generic;
 using System.Linq;
 
 namespace PasswordStrengthAnalyzer
 {
-    /// <summary>
-    /// A simple password strength analyzer that evaluates password security
-    /// and provides detailed feedback and suggestions for improvement.
-    /// </summary>
     class Program
     {
         private const int MaxPasswordDisplayLength = 20;
-        private const int PasswordT cateLength = 17;
+        private const int PasswordTruncateLength = 17;
         
         static void Main(string[] args)
         {
-            // Support command-line argument for batch mode
             if (args.Length > 0 && args[0] == "--help")
             {
                 ShowHelp();
@@ -24,12 +21,10 @@ namespace PasswordStrengthAnalyzer
 
             if (args.Length > 0)
             {
-                // Analyze password from command line
                 AnalyzeAndDisplay(args[0]);
                 return;
             }
 
-            // Interactive mode
             RunInteractiveMode();
         }
 
@@ -117,7 +112,6 @@ namespace PasswordStrengthAnalyzer
             Console.WriteLine($"Entropy:      {analysis.EstimatedEntropyBits:F1} bits");
             Console.WriteLine();
             
-            // Visual score bar
             int barLength = 30;
             int filledLength = (int)(barLength * analysis.Score / 100.0);
             string bar = new string('█', filledLength) + new string('░', barLength - filledLength);
@@ -148,9 +142,6 @@ namespace PasswordStrengthAnalyzer
             return "🟩";
         }
 
-        /// <summary>
-        /// Reads a password from the console without displaying the characters.
-        /// </summary>
         private static string ReadPassword()
         {
             var password = new List<char>();
@@ -175,7 +166,6 @@ namespace PasswordStrengthAnalyzer
                 }
                 else if (keyInfo.Key == ConsoleKey.Escape)
                 {
-                    // Clear the password on Escape
                     while (password.Count > 0)
                     {
                         password.RemoveAt(password.Count - 1);
@@ -192,9 +182,6 @@ namespace PasswordStrengthAnalyzer
             return new string(password.ToArray());
         }
 
-        /// <summary>
-        /// Analyzes a password and returns detailed analysis results.
-        /// </summary>
         private static PasswordAnalysis AnalyzePassword(string password)
         {
             var analysis = new PasswordAnalysis
@@ -212,7 +199,6 @@ namespace PasswordStrengthAnalyzer
             int score = 0;
             var feedback = new List<string>();
 
-            // Length scoring
             if (analysis.Length <= 6)
             {
                 score += 5;
@@ -233,10 +219,9 @@ namespace PasswordStrengthAnalyzer
             }
             else
             {
-                score += 40; // Bonus for very long passwords
+                score += 40;
             }
 
-            // Character variety scoring
             int varietyCount = 0;
             if (analysis.HasLower) varietyCount++;
             if (analysis.HasUpper) varietyCount++;
@@ -245,19 +230,16 @@ namespace PasswordStrengthAnalyzer
 
             score += varietyCount * 10;
 
-            // Feedback for missing character types
             if (!analysis.HasLower) feedback.Add("Add lowercase letters (a-z).");
             if (!analysis.HasUpper) feedback.Add("Add UPPERCASE letters (A-Z).");
             if (!analysis.HasDigit) feedback.Add("Add digits (0-9).");
             if (!analysis.HasSymbol) feedback.Add("Add special characters (!, @, #, $, %, etc.).");
 
-            // Unique characters bonus
             if (analysis.UniqueCharsCount >= 6 && analysis.UniqueCharsCount < 10)
                 score += 5;
             else if (analysis.UniqueCharsCount >= 10)
                 score += 10;
 
-            // Check for common patterns
             string lower = password.ToLower();
             string[] commonPatterns =
             {
@@ -273,7 +255,6 @@ namespace PasswordStrengthAnalyzer
                 feedback.Add("Avoid common words or patterns (e.g., 'password', '1234', 'qwerty').");
             }
 
-            // Check for single character type
             bool onlyDigits = password.All(char.IsDigit);
             bool onlyLetters = password.All(char.IsLetter);
 
@@ -283,21 +264,18 @@ namespace PasswordStrengthAnalyzer
                 feedback.Add("Mix different character types (letters, digits, symbols).");
             }
 
-            // Check for excessive repetition
             if (HasManyRepeats(password))
             {
                 score -= 10;
                 feedback.Add("Avoid repeating the same character multiple times.");
             }
 
-            // Check for sequential patterns
             if (HasSequentialPattern(password))
             {
                 score -= 10;
                 feedback.Add("Avoid sequential patterns (e.g., 'abc', '123').");
             }
 
-            // Normalize score
             if (score < 0) score = 0;
             if (score > 100) score = 100;
 
@@ -308,9 +286,6 @@ namespace PasswordStrengthAnalyzer
             return analysis;
         }
 
-        /// <summary>
-        /// Gets a human-readable rating based on the score.
-        /// </summary>
         private static string GetRating(int score)
         {
             if (score < 25) return "Very Weak";
@@ -320,16 +295,13 @@ namespace PasswordStrengthAnalyzer
             return "Very Strong";
         }
 
-        /// <summary>
-        /// Estimates the entropy of a password in bits.
-        /// </summary>
         private static double EstimateEntropy(string password, PasswordAnalysis analysis)
         {
             int poolSize = 0;
             if (analysis.HasLower) poolSize += 26;
             if (analysis.HasUpper) poolSize += 26;
             if (analysis.HasDigit) poolSize += 10;
-            if (analysis.HasSymbol) poolSize += 30; // Common symbols
+            if (analysis.HasSymbol) poolSize += 30;
 
             if (poolSize == 0 || password.Length == 0)
                 return 0;
@@ -337,9 +309,6 @@ namespace PasswordStrengthAnalyzer
             return password.Length * Math.Log(poolSize, 2);
         }
 
-        /// <summary>
-        /// Checks if the password has many repeated characters.
-        /// </summary>
         private static bool HasManyRepeats(string password)
         {
             if (password.Length < 4) return false;
@@ -364,9 +333,6 @@ namespace PasswordStrengthAnalyzer
             return maxRepeat >= 4;
         }
 
-        /// <summary>
-        /// Checks if the password contains sequential patterns.
-        /// </summary>
         private static bool HasSequentialPattern(string password)
         {
             if (password.Length < 3) return false;
@@ -379,14 +345,12 @@ namespace PasswordStrengthAnalyzer
                 char c2 = lower[i + 1];
                 char c3 = lower[i + 2];
 
-                // Check for sequential letters (abc, bcd, etc.)
                 if (char.IsLetter(c1) && char.IsLetter(c2) && char.IsLetter(c3))
                 {
                     if (c2 == c1 + 1 && c3 == c2 + 1)
                         return true;
                 }
 
-                // Check for sequential digits (123, 234, etc.)
                 if (char.IsDigit(c1) && char.IsDigit(c2) && char.IsDigit(c3))
                 {
                     if (c2 == c1 + 1 && c3 == c2 + 1)
@@ -398,9 +362,6 @@ namespace PasswordStrengthAnalyzer
         }
     }
 
-    /// <summary>
-    /// Represents the analysis results of a password strength evaluation.
-    /// </summary>
     internal class PasswordAnalysis
     {
         public int Length { get; set; }
@@ -415,5 +376,3 @@ namespace PasswordStrengthAnalyzer
         public List<string> Feedback { get; set; } = new List<string>();
     }
 }
-
-
