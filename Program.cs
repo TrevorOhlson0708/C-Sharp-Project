@@ -1,334 +1,419 @@
-﻿using System;
-using System.IO;
-using System.Threading.Tasks;
+using System;
 using System.Collections.Generic;
-using System.CommandLine;
-using Aspose.Email.Storage.Pst;
-using Aspose.Email.Mapi;
+using System.Linq;
 
-namespace PSTGenerator;
-
-class Program
+namespace PasswordStrengthAnalyzer
 {
-    static async Task<int> Main(string[] args)
+    /// <summary>
+    /// A simple password strength analyzer that evaluates password security
+    /// and provides detailed feedback and suggestions for improvement.
+    /// </summary>
+    class Program
     {
-        var folderCountOption = new Option<int>(
-            aliases: new[] { "--folders", "-f" },
-            description: "Number of folders to create in the PST file")
+        private const int MaxPasswordDisplayLength = 20;
+        private const int PasswordT cateLength = 17;
+        
+        static void Main(string[] args)
         {
-            IsRequired = true
-        };
-
-        var emailCountOption = new Option<int>(
-            aliases: new[] { "--emails", "-e" },
-            description: "Total number of emails to create across all folders")
-        {
-            IsRequired = true
-        };
-
-        var targetSizeOption = new Option<long>(
-            aliases: new[] { "--size", "-s" },
-            description: "Target size in MB (e.g., 1024 for 1GB, 10240 for 10GB)")
-        {
-            IsRequired = false
-        };
-        targetSizeOption.SetDefaultValue(0L);
-
-        var outputPathOption = new Option<string>(
-            aliases: new[] { "--output", "-o" },
-            description: "Output path for the PST file")
-        {
-            IsRequired = false
-        };
-        outputPathOption.SetDefaultValue("TestPST.pst");
-
-        var rootCommand = new RootCommand("PST File Generator - Creates test PST files with fake emails")
-        {
-            folderCountOption,
-            emailCountOption,
-            targetSizeOption,
-            outputPathOption
-        };
-
-        rootCommand.SetHandler(async (int folders, int emails, long targetSize, string outputPath) =>
-        {
-            await GeneratePSTFile(folders, emails, targetSize, outputPath);
-        }, folderCountOption, emailCountOption, targetSizeOption, outputPathOption);
-
-        return await rootCommand.InvokeAsync(args);
-    }
-
-    static async Task GeneratePSTFile(int folderCount, int emailCount, long targetSizeMB, string outputPath)
-    {
-        // Convert MB to bytes
-        long targetSize = targetSizeMB * 1024 * 1024;
-
-        Console.WriteLine($"PST Generator Starting...");
-        Console.WriteLine($"Folders: {folderCount}");
-        Console.WriteLine($"Emails: {emailCount}");
-        Console.WriteLine($"Target Size: {targetSizeMB / 1024.0:F2} GB ({targetSizeMB:N0} MB)");
-        Console.WriteLine($"Output: {outputPath}");
-        Console.WriteLine();
-
-        // Ensure output directory exists
-        string outputDir = Path.GetDirectoryName(outputPath);
-        if (!string.IsNullOrEmpty(outputDir) && !Directory.Exists(outputDir))
-        {
-            Console.WriteLine($"Creating output directory: {outputDir}");
-            Directory.CreateDirectory(outputDir);
-        }
-
-        // Delete existing PST file if it exists
-        if (File.Exists(outputPath))
-        {
-            Console.WriteLine($"Deleting existing PST file: {outputPath}");
-            File.Delete(outputPath);
-        }
-
-        try
-        {
-            // Create PST file
-            Console.WriteLine($"Creating PST file: {outputPath}");
-            using (PersonalStorage pst = PersonalStorage.Create(outputPath, FileFormatVersion.Unicode))
+            // Support command-line argument for batch mode
+            if (args.Length > 0 && args[0] == "--help")
             {
-                Console.WriteLine("PST file created successfully!");
-                Console.WriteLine();
+                ShowHelp();
+                return;
+            }
 
-                // Get the root folder
-                FolderInfo rootFolder = pst.RootFolder;
+            if (args.Length > 0)
+            {
+                // Analyze password from command line
+                AnalyzeAndDisplay(args[0]);
+                return;
+            }
 
-                // Calculate emails per folder
-                int emailsPerFolder = emailCount / folderCount;
-                int remainingEmails = emailCount % folderCount;
+            // Interactive mode
+            RunInteractiveMode();
+        }
 
-                // Calculate size per email if target size is specified
-                long sizePerEmail = 0;
-                if (targetSize > 0)
+        private static void ShowHelp()
+        {
+            Console.WriteLine("Password Strength Analyzer");
+            Console.WriteLine("Usage:");
+            Console.WriteLine("  PasswordStrengthAnalyzer [password]  - Analyze a password");
+            Console.WriteLine("  PasswordStrengthAnalyzer            - Interactive mode");
+            Console.WriteLine("  PasswordStrengthAnalyzer --help     - Show this help");
+            Console.WriteLine();
+            Console.WriteLine("Examples:");
+            Console.WriteLine("  PasswordStrengthAnalyzer MyP@ssw0rd!");
+            Console.WriteLine("  PasswordStrengthAnalyzer");
+        }
+
+        private static void RunInteractiveMode()
+        {
+            Console.WriteLine("=== Password Strength Analyzer ===");
+            Console.WriteLine("Enter a password to analyze (or 'q' to quit, 'help' for tips).");
+            Console.WriteLine();
+
+            while (true)
+            {
+                Console.Write("Enter password: ");
+                string? password = ReadPassword();
+
+                if (string.IsNullOrWhiteSpace(password))
                 {
-                    sizePerEmail = targetSize / emailCount;
-                }
-
-                // Create folders and emails
-                var random = new Random();
-                var folderNames = new HashSet<string>();
-
-                for (int folderIndex = 0; folderIndex < folderCount; folderIndex++)
-                {
-                    // Generate unique folder name
-                    string folderName;
-                    int attempts = 0;
-                    do
-                    {
-                        folderName = $"Folder_{folderIndex + 1}_{Guid.NewGuid().ToString().Substring(0, 8)}";
-                        attempts++;
-                    } while (folderNames.Contains(folderName) && attempts < 100);
-                    folderNames.Add(folderName);
-
-                    Console.WriteLine($"Creating folder {folderIndex + 1}/{folderCount}: {folderName}");
-
-                    // Create folder in PST
-                    FolderInfo folder = rootFolder.AddSubFolder(folderName);
-
-                    // Calculate emails for this folder
-                    int emailsInFolder = emailsPerFolder + (folderIndex < remainingEmails ? 1 : 0);
-
-                    Console.WriteLine($"  Adding {emailsInFolder} emails...");
-
-                    for (int emailIndex = 0; emailIndex < emailsInFolder; emailIndex++)
-                    {
-                        if (emailIndex > 0 && emailIndex % 100 == 0)
-                        {
-                            Console.WriteLine($"  Progress: {emailIndex}/{emailsInFolder} emails");
-                        }
-
-                        // Generate email content
-                        string subject = GenerateRandomSubject(random);
-                        string body = GenerateRandomEmailBody(random, sizePerEmail);
-                        string sender = GenerateRandomEmail(random, "sender");
-                        string recipient = GenerateRandomEmail(random, "recipient");
-                        DateTime sentDate = DateTime.Now.AddDays(-random.Next(0, 365));
-
-                        // Create MAPI message
-                        MapiMessage message = new MapiMessage(sender, recipient, subject, body);
-                        message.ClientSubmitTime = sentDate;
-                        message.DeliveryTime = sentDate;
-
-                        // Add attachments if we need to meet size requirements
-                        if (sizePerEmail > 0 && sizePerEmail > 10000) // Only if we need significant size
-                        {
-                            long remainingSize = sizePerEmail - body.Length;
-                            if (remainingSize > 1000)
-                            {
-                                AddRandomAttachment(message, random, remainingSize);
-                            }
-                        }
-                        else if (targetSize == 0 && random.NextDouble() < 0.1) // 10% chance to add attachments
-                        {
-                            AddRandomAttachment(message, random, random.Next(1024, 1024 * 1024)); // 1KB to 1MB
-                        }
-
-                        // Add message to folder
-                        folder.AddMessage(message);
-                    }
-
-                    Console.WriteLine($"  Completed folder {folderIndex + 1}/{folderCount}");
+                    Console.WriteLine("No password entered. Try again.");
                     Console.WriteLine();
+                    continue;
                 }
 
-                Console.WriteLine("PST file generation completed!");
-            }
+                if (password.ToLower() == "q" || password.ToLower() == "quit")
+                    break;
 
-            // Get final file size
-            if (File.Exists(outputPath))
-            {
-                FileInfo fileInfo = new FileInfo(outputPath);
-                Console.WriteLine($"Final file size: {fileInfo.Length / (1024.0 * 1024.0 * 1024.0):F2} GB ({fileInfo.Length:N0} bytes)");
-                Console.WriteLine($"PST file location: {Path.GetFullPath(outputPath)}");
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error: {ex.Message}");
-            Console.WriteLine($"Stack Trace: {ex.StackTrace}");
-            throw;
-        }
-
-        await Task.CompletedTask;
-    }
-
-    static string GenerateRandomSubject(Random random)
-    {
-        string[] subjects = {
-            "Meeting Follow-up",
-            "Project Update",
-            "Quarterly Report",
-            "Budget Review",
-            "Status Report",
-            "Action Items",
-            "Weekly Summary",
-            "Urgent: Review Required",
-            "Team Meeting Notes",
-            "Customer Feedback",
-            "Product Launch",
-            "Marketing Campaign",
-            "Sales Forecast",
-            "Technical Documentation",
-            "Code Review Request"
-        };
-
-        return $"{subjects[random.Next(subjects.Length)]} - {Guid.NewGuid().ToString().Substring(0, 8)}";
-    }
-
-    static string GenerateRandomEmailBody(Random random, long targetSize)
-    {
-        if (targetSize > 0 && targetSize > 5000)
-        {
-            // Generate body to meet size requirement
-            int targetLength = (int)Math.Min(targetSize - 2000, 1000000); // Cap at 1MB for body
-            var body = new System.Text.StringBuilder(targetLength);
-
-            string[] paragraphs = {
-                "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ",
-                "Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. ",
-                "Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris. ",
-                "Duis aute irure dolor in reprehenderit in voluptate velit esse. ",
-                "Excepteur sint occaecat cupidatat non proident, sunt in culpa. "
-            };
-
-            while (body.Length < targetLength)
-            {
-                body.Append(paragraphs[random.Next(paragraphs.Length)]);
-                if (random.Next(100) < 5)
+                if (password.ToLower() == "help")
                 {
-                    body.Append("\n\n");
+                    ShowTips();
+                    Console.WriteLine();
+                    continue;
                 }
+
+                AnalyzeAndDisplay(password);
+                Console.WriteLine();
             }
 
-            return body.ToString();
+            Console.WriteLine("Goodbye!");
         }
-        else
+
+        private static void ShowTips()
         {
-            // Generate random body of reasonable size
-            int paragraphs = random.Next(3, 10);
-            var body = new System.Text.StringBuilder();
+            Console.WriteLine();
+            Console.WriteLine("=== Password Tips ===");
+            Console.WriteLine("✓ Use at least 12 characters");
+            Console.WriteLine("✓ Mix uppercase and lowercase letters");
+            Console.WriteLine("✓ Include numbers and special characters");
+            Console.WriteLine("✓ Avoid common words and patterns");
+            Console.WriteLine("✓ Use unique characters (avoid repetition)");
+            Console.WriteLine("✓ Consider using a passphrase instead");
+            Console.WriteLine();
+        }
 
-            string[] sentenceTemplates = {
-                "This is an important message regarding the project status. ",
-                "We need to schedule a meeting to discuss the upcoming deliverables. ",
-                "Please review the attached documents and provide your feedback. ",
-                "The team has made significant progress on the assigned tasks. ",
-                "We are facing some challenges that require immediate attention. ",
-                "The deadline for submission is approaching, please ensure all work is completed. ",
-                "Thank you for your continued support and dedication to this project. ",
-                "I look forward to hearing your thoughts on this matter. "
-            };
+        private static void AnalyzeAndDisplay(string password)
+        {
+            var analysis = AnalyzePassword(password);
 
-            for (int i = 0; i < paragraphs; i++)
+            Console.WriteLine();
+            Console.WriteLine("═══════════════════════════════════");
+            Console.WriteLine("           ANALYSIS RESULT");
+            Console.WriteLine("═══════════════════════════════════");
+            
+            string displayPassword = password.Length <= MaxPasswordDisplayLength 
+                ? password 
+                : password.Substring(0, PasswordTruncateLength) + "...";
+            
+            Console.WriteLine($"Password:     {displayPassword}");
+            Console.WriteLine($"Length:       {analysis.Length} characters");
+            Console.WriteLine($"Lowercase:    {(analysis.HasLower ? "✓ Yes" : "✗ No")}");
+            Console.WriteLine($"Uppercase:    {(analysis.HasUpper ? "✓ Yes" : "✗ No")}");
+            Console.WriteLine($"Digits:       {(analysis.HasDigit ? "✓ Yes" : "✗ No")}");
+            Console.WriteLine($"Symbols:      {(analysis.HasSymbol ? "✓ Yes" : "✗ No")}");
+            Console.WriteLine($"Unique chars: {analysis.UniqueCharsCount}");
+            Console.WriteLine($"Entropy:      {analysis.EstimatedEntropyBits:F1} bits");
+            Console.WriteLine();
+            
+            // Visual score bar
+            int barLength = 30;
+            int filledLength = (int)(barLength * analysis.Score / 100.0);
+            string bar = new string('█', filledLength) + new string('░', barLength - filledLength);
+            Console.WriteLine($"Score:        [{bar}] {analysis.Score}/100");
+            Console.WriteLine($"Rating:       {GetRatingEmoji(analysis.Score)} {analysis.Rating}");
+            Console.WriteLine();
+
+            if (analysis.Feedback.Count > 0)
             {
-                int sentences = random.Next(2, 6);
-                for (int j = 0; j < sentences; j++)
+                Console.WriteLine("💡 Suggestions:");
+                foreach (var tip in analysis.Feedback)
+                    Console.WriteLine($"   • {tip}");
+            }
+            else
+            {
+                Console.WriteLine("✅ Excellent! Your password is very strong.");
+            }
+
+            Console.WriteLine("═══════════════════════════════════");
+        }
+
+        private static string GetRatingEmoji(int score)
+        {
+            if (score < 25) return "🔴";
+            if (score < 50) return "🟠";
+            if (score < 70) return "🟡";
+            if (score < 85) return "🟢";
+            return "🟩";
+        }
+
+        /// <summary>
+        /// Reads a password from the console without displaying the characters.
+        /// </summary>
+        private static string ReadPassword()
+        {
+            var password = new List<char>();
+            ConsoleKeyInfo keyInfo;
+
+            while (true)
+            {
+                keyInfo = Console.ReadKey(intercept: true);
+
+                if (keyInfo.Key == ConsoleKey.Enter)
                 {
-                    body.Append(sentenceTemplates[random.Next(sentenceTemplates.Length)]);
+                    Console.WriteLine();
+                    break;
                 }
-                body.Append("\n\n");
-            }
-
-            return body.ToString();
-        }
-    }
-
-    static string GenerateRandomEmail(Random random, string prefix)
-    {
-        string[] domains = { "example.com", "test.com", "company.com", "email.com", "mail.com" };
-        return $"{prefix}_{random.Next(1000, 9999)}@{domains[random.Next(domains.Length)]}";
-    }
-
-    static void AddRandomAttachment(MapiMessage message, Random random, long targetSize)
-    {
-        try
-        {
-            // Create a temporary file with random data
-            string tempFile = Path.GetTempFileName();
-
-            try
-            {
-                using (FileStream fs = new FileStream(tempFile, FileMode.Create))
+                else if (keyInfo.Key == ConsoleKey.Backspace)
                 {
-                    byte[] buffer = new byte[8192];
-                    long remaining = targetSize;
-
-                    while (remaining > 0)
+                    if (password.Count > 0)
                     {
-                        random.NextBytes(buffer);
-                        int toWrite = (int)Math.Min(remaining, buffer.Length);
-                        fs.Write(buffer, 0, toWrite);
-                        remaining -= toWrite;
+                        password.RemoveAt(password.Count - 1);
+                        Console.Write("\b \b");
                     }
                 }
-
-                // Add attachment to message
-                string attachmentName = $"Attachment_{Guid.NewGuid().ToString().Substring(0, 8)}.dat";
-                message.Attachments.Add(attachmentName, File.ReadAllBytes(tempFile));
-            }
-            finally
-            {
-                // Delete temp file after adding
-                try
+                else if (keyInfo.Key == ConsoleKey.Escape)
                 {
-                    File.Delete(tempFile);
+                    // Clear the password on Escape
+                    while (password.Count > 0)
+                    {
+                        password.RemoveAt(password.Count - 1);
+                        Console.Write("\b \b");
+                    }
                 }
-                catch { }
+                else if (!char.IsControl(keyInfo.KeyChar))
+                {
+                    password.Add(keyInfo.KeyChar);
+                    Console.Write("*");
+                }
             }
+
+            return new string(password.ToArray());
         }
-        catch
+
+        /// <summary>
+        /// Analyzes a password and returns detailed analysis results.
+        /// </summary>
+        private static PasswordAnalysis AnalyzePassword(string password)
         {
-            // Ignore attachment errors
+            var analysis = new PasswordAnalysis
+            {
+                Length = password.Length,
+                HasLower = password.Any(char.IsLower),
+                HasUpper = password.Any(char.IsUpper),
+                HasDigit = password.Any(char.IsDigit),
+                HasSymbol = password.Any(ch => !char.IsLetterOrDigit(ch)),
+                UniqueCharsCount = password.Distinct().Count()
+            };
+
+            analysis.EstimatedEntropyBits = EstimateEntropy(password, analysis);
+
+            int score = 0;
+            var feedback = new List<string>();
+
+            // Length scoring
+            if (analysis.Length <= 6)
+            {
+                score += 5;
+                feedback.Add("Use a longer password (at least 10-12 characters recommended).");
+            }
+            else if (analysis.Length <= 9)
+            {
+                score += 15;
+                feedback.Add("Consider increasing length to 12+ characters for better security.");
+            }
+            else if (analysis.Length <= 12)
+            {
+                score += 25;
+            }
+            else if (analysis.Length <= 16)
+            {
+                score += 35;
+            }
+            else
+            {
+                score += 40; // Bonus for very long passwords
+            }
+
+            // Character variety scoring
+            int varietyCount = 0;
+            if (analysis.HasLower) varietyCount++;
+            if (analysis.HasUpper) varietyCount++;
+            if (analysis.HasDigit) varietyCount++;
+            if (analysis.HasSymbol) varietyCount++;
+
+            score += varietyCount * 10;
+
+            // Feedback for missing character types
+            if (!analysis.HasLower) feedback.Add("Add lowercase letters (a-z).");
+            if (!analysis.HasUpper) feedback.Add("Add UPPERCASE letters (A-Z).");
+            if (!analysis.HasDigit) feedback.Add("Add digits (0-9).");
+            if (!analysis.HasSymbol) feedback.Add("Add special characters (!, @, #, $, %, etc.).");
+
+            // Unique characters bonus
+            if (analysis.UniqueCharsCount >= 6 && analysis.UniqueCharsCount < 10)
+                score += 5;
+            else if (analysis.UniqueCharsCount >= 10)
+                score += 10;
+
+            // Check for common patterns
+            string lower = password.ToLower();
+            string[] commonPatterns =
+            {
+                "password", "1234", "12345", "123456", "qwerty",
+                "letmein", "admin", "welcome", "monkey", "dragon",
+                "master", "sunshine", "princess", "football", "shadow",
+                "abc123", "password1", "iloveyou", "trustno1"
+            };
+
+            if (commonPatterns.Any(p => lower.Contains(p)))
+            {
+                score -= 25;
+                feedback.Add("Avoid common words or patterns (e.g., 'password', '1234', 'qwerty').");
+            }
+
+            // Check for single character type
+            bool onlyDigits = password.All(char.IsDigit);
+            bool onlyLetters = password.All(char.IsLetter);
+
+            if (onlyDigits || onlyLetters)
+            {
+                score -= 15;
+                feedback.Add("Mix different character types (letters, digits, symbols).");
+            }
+
+            // Check for excessive repetition
+            if (HasManyRepeats(password))
+            {
+                score -= 10;
+                feedback.Add("Avoid repeating the same character multiple times.");
+            }
+
+            // Check for sequential patterns
+            if (HasSequentialPattern(password))
+            {
+                score -= 10;
+                feedback.Add("Avoid sequential patterns (e.g., 'abc', '123').");
+            }
+
+            // Normalize score
+            if (score < 0) score = 0;
+            if (score > 100) score = 100;
+
+            analysis.Score = score;
+            analysis.Rating = GetRating(score);
+            analysis.Feedback = feedback;
+
+            return analysis;
         }
+
+        /// <summary>
+        /// Gets a human-readable rating based on the score.
+        /// </summary>
+        private static string GetRating(int score)
+        {
+            if (score < 25) return "Very Weak";
+            if (score < 50) return "Weak";
+            if (score < 70) return "Fair";
+            if (score < 85) return "Strong";
+            return "Very Strong";
+        }
+
+        /// <summary>
+        /// Estimates the entropy of a password in bits.
+        /// </summary>
+        private static double EstimateEntropy(string password, PasswordAnalysis analysis)
+        {
+            int poolSize = 0;
+            if (analysis.HasLower) poolSize += 26;
+            if (analysis.HasUpper) poolSize += 26;
+            if (analysis.HasDigit) poolSize += 10;
+            if (analysis.HasSymbol) poolSize += 30; // Common symbols
+
+            if (poolSize == 0 || password.Length == 0)
+                return 0;
+
+            return password.Length * Math.Log(poolSize, 2);
+        }
+
+        /// <summary>
+        /// Checks if the password has many repeated characters.
+        /// </summary>
+        private static bool HasManyRepeats(string password)
+        {
+            if (password.Length < 4) return false;
+
+            int maxRepeat = 1;
+            int current = 1;
+
+            for (int i = 1; i < password.Length; i++)
+            {
+                if (password[i] == password[i - 1])
+                {
+                    current++;
+                    if (current > maxRepeat)
+                        maxRepeat = current;
+                }
+                else
+                {
+                    current = 1;
+                }
+            }
+
+            return maxRepeat >= 4;
+        }
+
+        /// <summary>
+        /// Checks if the password contains sequential patterns.
+        /// </summary>
+        private static bool HasSequentialPattern(string password)
+        {
+            if (password.Length < 3) return false;
+
+            string lower = password.ToLower();
+            
+            for (int i = 0; i < lower.Length - 2; i++)
+            {
+                char c1 = lower[i];
+                char c2 = lower[i + 1];
+                char c3 = lower[i + 2];
+
+                // Check for sequential letters (abc, bcd, etc.)
+                if (char.IsLetter(c1) && char.IsLetter(c2) && char.IsLetter(c3))
+                {
+                    if (c2 == c1 + 1 && c3 == c2 + 1)
+                        return true;
+                }
+
+                // Check for sequential digits (123, 234, etc.)
+                if (char.IsDigit(c1) && char.IsDigit(c2) && char.IsDigit(c3))
+                {
+                    if (c2 == c1 + 1 && c3 == c2 + 1)
+                        return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Represents the analysis results of a password strength evaluation.
+    /// </summary>
+    internal class PasswordAnalysis
+    {
+        public int Length { get; set; }
+        public bool HasLower { get; set; }
+        public bool HasUpper { get; set; }
+        public bool HasDigit { get; set; }
+        public bool HasSymbol { get; set; }
+        public int UniqueCharsCount { get; set; }
+        public double EstimatedEntropyBits { get; set; }
+        public int Score { get; set; }
+        public string Rating { get; set; } = string.Empty;
+        public List<string> Feedback { get; set; } = new List<string>();
     }
 }
 
-//cd TestPstFile
-//dotnet run -- --folders 5 --emails 100 --output "SmallTest.pst"
-//dotnet run -- --folders 10 --emails 500 --output "MediumTest.pst"
-//dotnet run -- --folders 10 --emails 500 --size 1024 --output "1GB.pst"
-//dotnet run -- --folders 20 --emails 2000 --size 10240 --output "10GB.pst"
+
